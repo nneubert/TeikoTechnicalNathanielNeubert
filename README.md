@@ -30,5 +30,5 @@ Adding new cells can be done by modifying the cell_counts tables rather than req
 Use of additional keys that use integers allow for easier joining.
 Use of several layers in the dataframe allows for easy expansion of the number of projects while minimizing data storage requirements.
 
-At my core, I am a mathematician. I actually designed a completely different set of files when I first began working on this project based purely on the csv file using pandas for my analysis. After I determined which statistical tests I liked, I began to code four five new python files.
+At my core, I am a mathematician. I actually designed a completely different set of files when I first began working on this project based purely on the csv file using pandas for my analysis. After I determined which statistical tests I liked, I began to code five new python files.
 Each python file is divided up based on function. data_loader.py creates the dataset from the cell-count.csv file. analysis.py holds the analysis and visualization functions used to determine if any of the data is statistically significant. feature_engineering.py helps with the generation of summary tables. subset_analysis.py performs the queries necessary for the final part of the assignment. dashboard.py is the glue that holds it all together and presents the results in a visual format. 
