@@ -4,7 +4,7 @@ pip install -r requirements.txt
 
 After this is finished, run
 
-streamlit run dashboard.py
+python -m streamlit run dashboard.py
 
 in the terminal. This will also provide the link to the dashboard. The results will take a minute to load. 
 
