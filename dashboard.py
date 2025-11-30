@@ -1,140 +1,150 @@
-# dashboard.py
-
 import streamlit as st
 import pandas as pd
-from data_loader import load_csv
-from feature_engineering import get_baseline_samples, compute_deltas
-import analysis as ana
-import visualization as viz
-import modeling as mdl
+import sqlite3
+from data_loader import load_csv_to_db, DB_PATH, CSV_PATH
+from analysis import full_analysis
+from feature_engineering import add_total_and_percentages, CELL_PCT_COLS
+import subset_analysis as sub
 
 # -------------------------------
-# Streamlit page setup
+# Streamlit setup
 # -------------------------------
 st.set_page_config(page_title="Immune Cell Analysis Dashboard", layout="wide")
 st.title("Immune Cell Analysis Dashboard")
 
 # -------------------------------
-# Load Data
+# Load / initialize database
 # -------------------------------
-uploaded_file = st.file_uploader("Upload cell-count CSV", type=["csv"])
-if uploaded_file:
-    df = load_csv(uploaded_file)
-    st.success("Data loaded successfully!")
+load_csv_to_db(CSV_PATH, DB_PATH)
+conn = sqlite3.connect(DB_PATH)
 
-    # -------------------------------
-    # Sidebar: Filters and Options
-    # -------------------------------
-    st.sidebar.header("Filters / Options")
+# -------------------------------
+# Load full dataset from database
+# -------------------------------
+df_samples = pd.read_sql_query("""
+SELECT s.sample, subj.subject, p.project_name AS project,
+       subj.treatment, subj.response, subj.sample_type,
+       subj.condition, subj.sex,
+       s.time_from_treatment_start, s.total_count,
+       cc.cell_type, cc.count, cc.percentage,
+       subj.project_id, subj.subject_id
+FROM samples s
+JOIN subjects subj ON s.subject_id = subj.subject_id
+JOIN projects p ON subj.project_id = p.project_id
+JOIN cell_counts cc ON cc.sample_id = s.sample_id;
+""", conn)
 
-    conditions = df["condition"].unique().tolist()
-    selected_condition = st.sidebar.selectbox("Select condition", conditions)
+# -------------------------------
+# Pivot / preprocess wide-format counts
+# -------------------------------
+df_wide = df_samples.pivot_table(
+    index=["sample", "subject", "project", "treatment", "response", "sample_type",
+           "time_from_treatment_start", "total_count", "condition"],
+    columns="cell_type",
+    values="count",
+    aggfunc="sum",
+    fill_value=0
+).reset_index()
+df_wide.columns.name = None
 
-    timepoints = sorted(df["time_from_treatment_start"].unique())
-    selected_timepoint = st.sidebar.selectbox("Select timepoint", timepoints)
+# Ensure all expected cell columns exist
+CELL_COLS = ["b_cell", "cd8_t_cell", "cd4_t_cell", "nk_cell", "monocyte"]
+for col in CELL_COLS:
+    if col not in df_wide.columns:
+        raise ValueError
 
-    sample_types = df["sample_type"].unique().tolist()
-    selected_sample_type = st.sidebar.selectbox("Select sample type", sample_types)
+metadata_cols = ["sample", "subject", "project", "treatment", "response",
+                 "sample_type", "time_from_treatment_start", "total_count", "condition"]
+df_wide = df_wide[metadata_cols + CELL_COLS]
 
-    responses = df["response"].dropna().unique().tolist()
-    selected_response = st.sidebar.selectbox("Select response", responses + [None])
+# Compute percentages
+df = add_total_and_percentages(df_wide)
 
-    st.sidebar.header("Statistical Test")
-    test_option = st.sidebar.selectbox(
-        "Choose test",
-        ["t-test", "Mann-Whitney U", "MANOVA", "Logistic Regression"]
-    )
+# -------------------------------
+# Full dataset overview
+# -------------------------------
+st.subheader("Full Dataset Overview")
+st.write(f"Total samples: {len(df)}")
+st.dataframe(df.head(20))
 
-    st.sidebar.header("Boxplot Layout")
-    layout_option = st.sidebar.radio("Choose layout", ["Alternating No/Yes", "Separate Subfigures"])
+# -------------------------------
+# Sample-level inspection
+# -------------------------------
+st.subheader("Inspect Samples by Subject")
+selected_sample = st.selectbox("Select a sample to inspect", df["sample"].unique())
 
-    run_rf = st.sidebar.checkbox("Run Random Forest", value=False)
+if selected_sample:
+    sample_info = df[df["sample"] == selected_sample]
+    st.markdown("**Selected Sample Info:**")
+    st.dataframe(sample_info)
 
-    # -------------------------------
-    # Filter Data
-    # -------------------------------
-    df_filtered = df[
-        (df["condition"] == selected_condition) &
-        (df["time_from_treatment_start"] == selected_timepoint) &
-        (df["sample_type"] == selected_sample_type)
-    ]
-    if selected_response:
-        df_filtered = df_filtered[df_filtered["response"] == selected_response]
+    subject_id = sample_info["subject"].iloc[0]
+    related_samples = df[df["subject"] == subject_id]
+    st.markdown(f"**Other samples from the same subject ({subject_id}):**")
+    st.dataframe(related_samples)
 
-    if len(df_filtered) == 0:
-        st.warning("No samples available after filtering. Adjust filters.")
-        st.stop()
+# -------------------------------
+# PBMC subset (Melanoma, Miraclib)
+# -------------------------------
+st.subheader("PBMC, Melanoma, Miraclib, Subset Visualizations")
+df_analysis = df[(df["sample_type"] == "PBMC") & (df["treatment"] == "miraclib") & (df["condition"] == "melanoma")]
+print(len(df_analysis))
+results = full_analysis(df_analysis)
 
-    st.subheader("Filtered Data Overview")
-    st.write(f"Showing {len(df_filtered)} samples after filtering.")
-    st.dataframe(df_filtered.head(10))
+st.markdown("**Boxplots - Alternating No/Yes Response**")
+st.pyplot(results["visualizations"]["boxplot_alternating"])
 
-    # -------------------------------
-    # Sample Inspection
-    # -------------------------------
-    st.subheader("Sample Browser")
+st.markdown("**Boxplots - Separate Subplots per Response**")
+st.pyplot(results["visualizations"]["boxplot_separate"])
 
-    sample_id = st.selectbox("Select a sample to inspect", df_filtered["sample"].tolist())
-    sample_row = df_filtered[df_filtered["sample"] == sample_id].iloc[0]
+# -------------------------------
+# Statistical Analysis & Modeling
+# -------------------------------
+st.subheader("Statistical Analysis Results")
 
-    st.markdown("**Sample Details:**")
-    sample_info_cols = [
-        "subject", "condition", "sex", "treatment", "response",
-        "time_from_treatment_start", "total_count"
-    ] + [c for c in df_filtered.columns if c.endswith("_pct")]
-    sample_info_cols = [c for c in sample_info_cols if c in df_filtered.columns]
-    st.write(sample_row[sample_info_cols])
+# T-tests
+st.markdown("### T-tests")
+st.dataframe(results["t_tests"])
 
-    st.markdown("**Related Samples (same subject):**")
-    related_samples = df[df["subject"] == sample_row["subject"]]
-    st.write(related_samples[["sample", "time_from_treatment_start", "response"]])
+# Logistic Regression
+st.markdown("### Logistic Regression")
+for tp, res in results["logistic_regression"].items():
+    st.markdown(f"**Timepoint: {tp}**")
+    st.write("Accuracy:", res["accuracy"])
+    st.write("Confusion Matrix")
+    st.dataframe(res["confusion_matrix"])
+    st.write("Feature Importances")
+    st.dataframe(res["feature_importances"])
+    st.write("Conclusion:", res["conclusion"])
 
-    # -------------------------------
-    # Statistical Analysis
-    # -------------------------------
-    st.subheader("Statistical Analysis")
-    if test_option == "t-test":
-        st.write("Running t-tests...")
-        ttest_results = ana.univariate_ttests(df_filtered)
-        st.dataframe(ttest_results)
-    elif test_option == "Mann-Whitney U":
-        st.write("Running Mann-Whitney U tests...")
-        mw_results = ana.univariate_mannwhitney(df_filtered)
-        st.dataframe(mw_results)
-    elif test_option == "MANOVA":
-        st.write("Running MANOVA...")
-        manova_results = ana.manova_test(df_filtered)
-        st.text(str(manova_results))
-    elif test_option == "Logistic Regression":
-        st.write("Running Logistic Regression...")
-        logreg_results = ana.logistic_regression_test(df_filtered)
-        st.write("Classification Report")
-        st.json(logreg_results["classification_report"])
-        st.write("Confusion Matrix")
-        st.write(logreg_results["confusion_matrix"])
-        st.write("Feature Importances")
-        st.write(logreg_results["feature_importances"])
+# Random Forest
+st.markdown("### Random Forest")
+for tp, res in results["random_forest"].items():
+    st.markdown(f"**Timepoint: {tp}**")
+    st.write("Accuracy:", res["accuracy"])
+    st.write("Confusion Matrix")
+    st.dataframe(res["confusion_matrix"])
+    st.write("Feature Importances")
+    st.dataframe(res["feature_importances"])
+    st.write("Conclusion:", res["conclusion"])
 
-    # -------------------------------
-    # Boxplots
-    # -------------------------------
-    st.subheader("Boxplots")
-    if layout_option == "Alternating No/Yes":
-        fig = viz.boxplot_alternating(df_filtered)
-        st.pyplot(fig)
-    else:
-        fig = viz.boxplot_separate(df_filtered)
-        st.pyplot(fig)
+# -------------------------------
+# Baseline Subset Summary (end of dashboard)
+# -------------------------------
+st.subheader("Subset Summary: Baseline PBMC Samples (Melanoma, Miraclib, At Treatment Start)")
 
-    # -------------------------------
-    # Random Forest
-    # -------------------------------
-    if run_rf:
-        st.subheader("Random Forest Prediction")
-        rf_results = mdl.random_forest_classification(df_filtered, extra_features=["sex"])
-        st.write("Classification Report")
-        st.json(rf_results["classification_report"])
-        st.write("Confusion Matrix")
-        st.write(rf_results["confusion_matrix"])
-        st.write("Feature Importances")
-        st.write(rf_results["feature_importances"])
+baseline_summary = sub.summarize_baseline_subset_db(conn, condition="melanoma", treatment="miraclib")
+
+st.markdown("**Samples per Project**")
+st.json(baseline_summary.get("samples_per_project", {}))
+
+st.markdown("**Subjects by Response**")
+st.json(baseline_summary.get("subjects_response", {}))
+
+st.markdown("**Subjects by Sex**")
+st.json(baseline_summary.get("subjects_sex", {}))
+
+# -------------------------------
+# Close database
+# -------------------------------
+conn.close()
