@@ -6,7 +6,7 @@ After this is finished, run
 
 streamlit run dashboard.py
 
-in the terminal. This will also provide the link to the dashboard. The results will take a minute to load but will be completed soon. 
+in the terminal. This will also provide the link to the dashboard. The results will take a minute to load. 
 
 I divided the csv into four main tables.
 projects -> many subjects
