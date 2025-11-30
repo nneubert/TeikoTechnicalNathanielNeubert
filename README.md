@@ -30,5 +30,10 @@ Adding new cells can be done by modifying the cell_counts tables rather than req
 Use of additional keys that use integers allow for easier joining.
 Use of several layers in the dataframe allows for easy expansion of the number of projects while minimizing data storage requirements.
 
-At my core, I am a mathematician. I actually designed a completely different set of files when I first began working on this project based purely on the csv file using pandas for my analysis. After I determined which statistical tests I liked, I began to code five new python files.
-Each python file is divided up based on function. data_loader.py creates the dataset from the cell-count.csv file. analysis.py holds the analysis and visualization functions used to determine if any of the data is statistically significant. feature_engineering.py helps with the generation of summary tables. subset_analysis.py performs the queries necessary for the final part of the assignment. dashboard.py is the glue that holds it all together and presents the results in a visual format. 
+I started out with many more files based on modifying a pandas dataframe to accomplish the desired tasks. Once I was satisfied, I altered my approach to focus more exclusively on using sqlite3 to directly generate the dataframes I wanted to analyze. 
+
+The real backbone of this project is the structure of the dataset, it allows for queries of robust variety. From it I was able to quickly sample desired samples, projects, or various conditions and treatments for subjects, etc. 
+
+analysis.py houses the key analysis functions of the program. This provides the tools we might want to use when analyzing a generated dataframe. 
+
+dashboard.py is like the frame that puts the overall picture together. In it I placed the majority of sqlite3 queries to generate the desired dataframes and run the desired analysis for the assignment. With additional time, I would like to have made the dashboard more generalizable, but it succeeds for the current assignment.

@@ -9,7 +9,11 @@ from sklearn.ensemble import RandomForestClassifier
 import matplotlib.pyplot as plt
 import seaborn as sns
 import matplotlib.patches as mpatches
-from feature_engineering import CELL_PCT_COLS, get_baseline_samples, add_total_and_percentages
+
+# Raw cell counts
+CELL_COLS = ["b_cell", "cd8_t_cell", "cd4_t_cell", "nk_cell", "monocyte"]
+# Percentage columns
+CELL_PCT_COLS = [f"{c}_pct" for c in CELL_COLS]
 
 def ttest_population(df: pd.DataFrame, group_col="response") -> pd.DataFrame:
     results = []
@@ -124,7 +128,6 @@ def boxplot_separate(df, timepoints=None):
     return fig
 
 def full_analysis(df):
-    df = add_total_and_percentages(df)
     return {
         "t_tests": ttest_population(df),
         "logistic_regression": logistic_regression_analysis(df),
