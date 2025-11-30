@@ -37,3 +37,5 @@ The real backbone of this project is the structure of the dataset, it allows for
 analysis.py houses the key analysis functions of the program. This provides the tools we might want to use when analyzing a generated dataframe. 
 
 dashboard.py is like the frame that puts the overall picture together. In it I placed the majority of sqlite3 queries to generate the desired dataframes and run the desired analysis for the assignment. With additional time, I would like to have made the dashboard more generalizable, but it succeeds for the current assignment.
+
+I actually have not worked with sqlite3 since college, so this was a good exercise in relearning and applying some techniques I haven't touched on in a long time. I can see the value of storing data in this way. It was also my first use of a dashboard, while I can't say I'm an expert, I do find the features very interesting and would like to better learn how to make more generalizable python programs in this way. The analysis.py program was the most familiar for me.
